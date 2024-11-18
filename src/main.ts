@@ -1,4 +1,3 @@
-// Initial Setup
 const INITIAL_LAT = 36.9895;
 const INITIAL_LON = -122.0627;
 const GRID_SIZE = 0.0001;
@@ -14,20 +13,18 @@ const playerPosition: Coordinates = { lat: INITIAL_LAT, lon: INITIAL_LON };
 let playerCoins = 0;
 let cacheLocations: CacheLocation[] = [];
 const cacheState: Map<string, CacheLocation> = new Map();
+const movementHistory: Coordinates[] = [];
 
-// Deterministic "random" function
 function deterministicRandom(seed: number): number {
   return Math.abs(Math.sin(seed) * 10000) % 1;
 }
 
-// Convert lat/lon to grid cell (Flyweight pattern)
 function latLonToCell({ lat, lon }: Coordinates): Cell {
   const i = Math.floor(lat / GRID_SIZE);
   const j = Math.floor(lon / GRID_SIZE);
   return { i, j };
 }
 
-// Generate a single cache
 function generateCache(cell: Cell): CacheLocation | null {
   if (deterministicRandom(cell.i * RANGE + cell.j) < CACHE_PROBABILITY) {
     const location: Coordinates = {
@@ -44,13 +41,12 @@ function generateCache(cell: Cell): CacheLocation | null {
       location,
       coins,
     };
-    cacheState.set(cache.id, cache); // Save cache state (Memento pattern)
+    cacheState.set(cache.id, cache);
     return cache;
   }
   return null;
 }
 
-// Regenerate visible caches
 function updateVisibleCaches() {
   cacheLocations = [];
   const playerCell = latLonToCell(playerPosition);
@@ -60,7 +56,7 @@ function updateVisibleCaches() {
       const cell: Cell = { i: playerCell.i + i, j: playerCell.j + j };
       const cacheId = `cache_${cell.i}_${cell.j}`;
       if (cacheState.has(cacheId)) {
-        cacheLocations.push(cacheState.get(cacheId)!); // Retrieve saved state
+        cacheLocations.push(cacheState.get(cacheId)!);
       } else {
         const newCache = generateCache(cell);
         if (newCache) cacheLocations.push(newCache);
@@ -69,9 +65,8 @@ function updateVisibleCaches() {
   }
 }
 
-// Render visible caches
 function renderVisibleCaches() {
-  document.body.innerHTML = ""; // Clear previous buttons
+  document.body.innerHTML = "";
   createMovementButtons();
 
   cacheLocations.forEach((cache) => {
@@ -82,12 +77,14 @@ function renderVisibleCaches() {
     cacheButton.addEventListener("click", () => {
       collectCoins(cache.id);
       depositCoins(cache.id);
+      centerOnCache(cache.id);
     });
     document.body.appendChild(cacheButton);
   });
+
+  renderMovementHistory();
 }
 
-// Create movement buttons
 function createMovementButtons() {
   const directions = [
     { label: "⬆️", dx: 0, dy: GRID_SIZE },
@@ -102,6 +99,7 @@ function createMovementButtons() {
     button.addEventListener("click", () => {
       playerPosition.lat += dy;
       playerPosition.lon += dx;
+      trackMovement();
       updateVisibleCaches();
       renderVisibleCaches();
     });
@@ -109,7 +107,6 @@ function createMovementButtons() {
   });
 }
 
-// Coin collection and deposit functions
 function collectCoins(cacheId: string) {
   const cache = cacheLocations.find((c) => c.id === cacheId);
   if (cache && cache.coins.length > 0) {
@@ -133,6 +130,99 @@ function depositCoins(cacheId: string) {
   }
 }
 
-// Initialize game
+function trackMovement() {
+  movementHistory.push({ ...playerPosition });
+}
+
+function renderMovementHistory() {
+  const polyline = document.querySelector("#polyline");
+  if (polyline) polyline.remove();
+
+  const path = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "polyline",
+  );
+  path.setAttribute("id", "polyline");
+  path.setAttribute(
+    "points",
+    movementHistory.map((p) => `${p.lon},${p.lat}`).join(" "),
+  );
+  path.setAttribute("style", "fill:none;stroke:black;stroke-width:2");
+  document.body.appendChild(path);
+}
+
+function centerOnCache(cacheId: string) {
+  const cache = cacheState.get(cacheId);
+  if (cache) {
+    playerPosition.lat = cache.location.lat;
+    playerPosition.lon = cache.location.lon;
+    updateVisibleCaches();
+    renderVisibleCaches();
+  }
+}
+
+function saveGameState() {
+  const gameState = {
+    playerPosition,
+    playerCoins,
+    cacheState: Array.from(cacheState.entries()),
+  };
+  localStorage.setItem("gameState", JSON.stringify(gameState));
+}
+
+function loadGameState() {
+  const savedState = localStorage.getItem("gameState");
+  if (savedState) {
+    const {
+      playerPosition: savedPosition,
+      playerCoins: savedCoins,
+      cacheState: savedCache,
+    } = JSON.parse(savedState);
+    Object.assign(playerPosition, savedPosition);
+    playerCoins = savedCoins;
+    cacheState.clear();
+    savedCache.forEach(([key, value]: [string, CacheLocation]) =>
+      cacheState.set(key, value)
+    );
+    updateVisibleCaches();
+    renderVisibleCaches();
+  }
+}
+
+function resetGameState() {
+  if (confirm("Are you sure you want to reset the game?")) {
+    localStorage.clear();
+    movementHistory.length = 0;
+    playerCoins = 0;
+    cacheState.clear();
+    updateVisibleCaches();
+    renderVisibleCaches();
+  }
+}
+
+const geolocationButton = document.createElement("button");
+geolocationButton.textContent = "🌐";
+geolocationButton.addEventListener("click", () => {
+  navigator.geolocation.watchPosition(
+    (position) => {
+      playerPosition.lat = position.coords.latitude;
+      playerPosition.lon = position.coords.longitude;
+      trackMovement();
+      updateVisibleCaches();
+      renderVisibleCaches();
+    },
+    (error) => alert("Error accessing geolocation: " + error.message),
+    { enableHighAccuracy: true },
+  );
+});
+document.body.appendChild(geolocationButton);
+
+const resetButton = document.createElement("button");
+resetButton.textContent = "🚮";
+resetButton.addEventListener("click", resetGameState);
+document.body.appendChild(resetButton);
+
+addEventListener("beforeunload", saveGameState);
+loadGameState();
 updateVisibleCaches();
 renderVisibleCaches();
