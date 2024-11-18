@@ -1,28 +1,19 @@
-// Button setup
-const button = document.createElement("button");
-button.textContent = "Click me!";
-button.addEventListener("click", () => {
-  alert("You clicked the button!");
-});
-document.body.appendChild(button);
-
-// Types for coordinates, caches, and coins
-type Coordinates = { lat: number; lon: number };
-type Cell = { i: number; j: number };
-type Coin = { cell: Cell; serial: number };
-type CacheLocation = { id: string; location: Coordinates; coins: Coin[] };
-
-// Constants for procedural generation
+// Initial Setup
 const INITIAL_LAT = 36.9895;
 const INITIAL_LON = -122.0627;
 const GRID_SIZE = 0.0001;
 const CACHE_PROBABILITY = 0.1;
 const RANGE = 8;
 
-// Player state
+type Coordinates = { lat: number; lon: number };
+type Cell = { i: number; j: number };
+type Coin = { cell: Cell; serial: number };
+type CacheLocation = { id: string; location: Coordinates; coins: Coin[] };
+
 const playerPosition: Coordinates = { lat: INITIAL_LAT, lon: INITIAL_LON };
 let playerCoins = 0;
-const cacheLocations: CacheLocation[] = generateCaches();
+let cacheLocations: CacheLocation[] = [];
+const cacheState: Map<string, CacheLocation> = new Map();
 
 // Deterministic "random" function
 function deterministicRandom(seed: number): number {
@@ -36,47 +27,89 @@ function latLonToCell({ lat, lon }: Coordinates): Cell {
   return { i, j };
 }
 
-// Generate caches within a specific range
-function generateCaches(): CacheLocation[] {
-  const cacheList: CacheLocation[] = [];
+// Generate a single cache
+function generateCache(cell: Cell): CacheLocation | null {
+  if (deterministicRandom(cell.i * RANGE + cell.j) < CACHE_PROBABILITY) {
+    const location: Coordinates = {
+      lat: INITIAL_LAT + cell.i * GRID_SIZE,
+      lon: INITIAL_LON + cell.j * GRID_SIZE,
+    };
+    const coins: Coin[] = [];
+    const numCoins = Math.floor(deterministicRandom(cell.i + cell.j + 1) * 10);
+    for (let coinSerial = 0; coinSerial < numCoins; coinSerial++) {
+      coins.push({ cell, serial: coinSerial });
+    }
+    const cache: CacheLocation = {
+      id: `cache_${cell.i}_${cell.j}`,
+      location,
+      coins,
+    };
+    cacheState.set(cache.id, cache); // Save cache state (Memento pattern)
+    return cache;
+  }
+  return null;
+}
+
+// Regenerate visible caches
+function updateVisibleCaches() {
+  cacheLocations = [];
+  const playerCell = latLonToCell(playerPosition);
+
   for (let i = -RANGE; i <= RANGE; i++) {
     for (let j = -RANGE; j <= RANGE; j++) {
-      if (deterministicRandom(i * RANGE + j) < CACHE_PROBABILITY) {
-        const cacheLocation: Coordinates = {
-          lat: INITIAL_LAT + i * GRID_SIZE,
-          lon: INITIAL_LON + j * GRID_SIZE,
-        };
-        const coins: Coin[] = [];
-        const numCoins = Math.floor(deterministicRandom(i + j + 1) * 10);
-        for (let coinSerial = 0; coinSerial < numCoins; coinSerial++) {
-          coins.push({ cell: latLonToCell(cacheLocation), serial: coinSerial });
-        }
-        cacheList.push({
-          id: `cache_${i}_${j}`,
-          location: cacheLocation,
-          coins,
-        });
+      const cell: Cell = { i: playerCell.i + i, j: playerCell.j + j };
+      const cacheId = `cache_${cell.i}_${cell.j}`;
+      if (cacheState.has(cacheId)) {
+        cacheLocations.push(cacheState.get(cacheId)!); // Retrieve saved state
+      } else {
+        const newCache = generateCache(cell);
+        if (newCache) cacheLocations.push(newCache);
       }
     }
   }
-  return cacheList;
 }
 
-// Find nearby caches within a given range
-function findNearbyCaches(
-  playerPos: Coordinates,
-  range: number,
-): CacheLocation[] {
-  return cacheLocations.filter((cache) => {
-    const distanceLat = Math.abs(playerPos.lat - cache.location.lat) /
-      GRID_SIZE;
-    const distanceLon = Math.abs(playerPos.lon - cache.location.lon) /
-      GRID_SIZE;
-    return distanceLat <= range && distanceLon <= range;
+// Render visible caches
+function renderVisibleCaches() {
+  document.body.innerHTML = ""; // Clear previous buttons
+  createMovementButtons();
+
+  cacheLocations.forEach((cache) => {
+    const cacheButton = document.createElement("button");
+    cacheButton.textContent = `Cache at (${cache.location.lat.toFixed(5)}, ${
+      cache.location.lon.toFixed(5)
+    }) - Coins: ${cache.coins.length}`;
+    cacheButton.addEventListener("click", () => {
+      collectCoins(cache.id);
+      depositCoins(cache.id);
+    });
+    document.body.appendChild(cacheButton);
   });
 }
 
-// Collect coins from a cache
+// Create movement buttons
+function createMovementButtons() {
+  const directions = [
+    { label: "⬆️", dx: 0, dy: GRID_SIZE },
+    { label: "⬇️", dx: 0, dy: -GRID_SIZE },
+    { label: "⬅️", dx: -GRID_SIZE, dy: 0 },
+    { label: "➡️", dx: GRID_SIZE, dy: 0 },
+  ];
+
+  directions.forEach(({ label, dx, dy }) => {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      playerPosition.lat += dy;
+      playerPosition.lon += dx;
+      updateVisibleCaches();
+      renderVisibleCaches();
+    });
+    document.body.appendChild(button);
+  });
+}
+
+// Coin collection and deposit functions
 function collectCoins(cacheId: string) {
   const cache = cacheLocations.find((c) => c.id === cacheId);
   if (cache && cache.coins.length > 0) {
@@ -88,11 +121,9 @@ function collectCoins(cacheId: string) {
   }
 }
 
-// Deposit coins into a cache
 function depositCoins(cacheId: string) {
   const cache = cacheLocations.find((c) => c.id === cacheId);
   if (cache && playerCoins > 0) {
-    // Each coin deposited into the cache
     cache.coins.push({
       cell: latLonToCell(cache.location),
       serial: cache.coins.length,
@@ -102,18 +133,6 @@ function depositCoins(cacheId: string) {
   }
 }
 
-// Display nearby caches as buttons for interaction
-const nearbyCaches = findNearbyCaches(playerPosition, RANGE);
-nearbyCaches.forEach((cache) => {
-  const cacheButton = document.createElement("button");
-  cacheButton.textContent = `Cache at (${cache.location.lat.toFixed(5)}, ${
-    cache.location.lon.toFixed(5)
-  }) - Coins: ${cache.coins.length}`;
-
-  cacheButton.addEventListener("click", () => {
-    collectCoins(cache.id);
-    depositCoins(cache.id);
-  });
-
-  document.body.appendChild(cacheButton);
-});
+// Initialize game
+updateVisibleCaches();
+renderVisibleCaches();
