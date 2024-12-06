@@ -232,4 +232,3 @@ addEventListener("beforeunload", saveGameState);
 loadGameState();
 updateVisibleCaches();
 renderVisibleCaches();
-
