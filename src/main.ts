@@ -3,7 +3,7 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 import "./leafletWorkaround.ts";
 
-const INITIAL_COORDINATES = { lat: 36.9895, lng: -122.0627 };
+const INITIAL_COORDINATES = { lat: 36.9895, lng: -122.0627 }; // Default coordinates
 const GRID_SIZE = 0.0001;
 const CACHE_PROBABILITY = 0.1;
 const VIEW_RANGE = 8;
@@ -211,6 +211,35 @@ const renderButtons = (): void => {
   document.getElementById("ui-container")?.appendChild(buttonsContainer);
 };
 
+// Geolocation function to update player position
+function enableGeolocationTracking() {
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        player.position = { lat, lng };
+        playerMarker.setLatLng([lat, lng]);
+        updateVisibleCaches();
+        renderPlayerInventory();
+      },
+      (error) => {
+        console.error("Error occurred while retrieving geolocation:", error);
+      },
+      { enableHighAccuracy: true }
+    );
+  } else {
+    console.warn("Geolocation is not supported by this browser.");
+  }
+}
+
+function renderGeolocationButton() {
+  const geolocationButton = document.createElement("button");
+  geolocationButton.innerText = "🌐";
+  geolocationButton.onclick = enableGeolocationTracking;
+  document.body.appendChild(geolocationButton);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const uiContainer = document.createElement("div");
   uiContainer.id = "ui-container";
@@ -222,5 +251,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   renderButtons();
   renderPlayerInventory();
+  renderGeolocationButton();
   updateVisibleCaches();
 });
