@@ -28,3 +28,9 @@ D3.d Features
 - Movement History: The player's movement is tracked and displayed using a polyline, providing a visual representation of their journey.
 - Reset Game State: Players can reset the game by pressing the 🚮 button. Before resetting, a confirmation prompt ensures the player intends to erase their progress and sensitive data.
 - Coin Identifier Click: Clicking on a coin identifier centers the map on the location of the coin's home cache, even if it's far from the player's current position.
+
+- ## Acknowledgments
+This project benefited from collaboration and feedback from peers. Special thanks to:
+- Samina [GitHub Repository](https://github.com/saminame/cmpm-121-demo-3) for advice. 
+Their contributions significantly enhanced the game's functionality.
+
